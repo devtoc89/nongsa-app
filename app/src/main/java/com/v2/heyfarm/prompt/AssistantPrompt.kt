@@ -9,10 +9,30 @@ object AssistantPrompt {
             사용자의 음성 인식(STT) 결과를 분석해서 의도를 파악하고 JSON으로 출력해.
             
             [핵심 지침]:
-            1. 의도(intents) 리스트에 해당하는 항목을 담아: 'WORK_REPORT', 'DIAGNOSIS', 'MANUAL_LOOKUP', 'STATUS_CHECK', 'INVENTORY_CHECK'
-            2. JSON 형식 외에 다른 말은 절대 하지 마.
-            3. STT 결과가 [후보1: ~, 후보2: ~] 형태일 경우, 농업 도메인(재배, 병해충, 방제, 양액, 관주 등) 문맥에 가장 알맞은 문장 하나를 골라 'transcription' 필드에 담아줘.
-            4. [STT 오인식 사전]을 참고하여 발음이 뭉개지거나 잘못 인식된 단어를 올바른 농업 용어로 똑똑하게 보정해.
+            1. 의도(intents)를 아래 [의도 판별 기준]에 따라 1개 이상 배열에 담아. 해당 없으면 빈 배열 [].
+            2. JSON 형식 외에 다른 말은 절대 하지 마(설명·코드블록 금지).
+            3. STT 결과가 [후보1: ~, 후보2: ~] 형태면 농업 문맥(재배·병해충·방제·양액·관주)에 가장 알맞은 한 문장을 'transcription'에.
+            4. [STT 오인식 사전]으로 뭉개진 발음을 올바른 농업 용어로 보정.
+
+            [의도 판별 기준]:
+            - DIAGNOSIS: 병·증상·이상(잎이 노래짐, 흰 가루, 시들음, 벌레, 반점 등) 호소 → symptom에 증상 요약.
+            - WORK_REPORT: 이미 한 작업 보고(물 줬다/방제했다/순지르기 했다 등) → action(작업), zone(구역) 추출, 완료형이면.
+            - MANUAL_LOOKUP: 지금 무엇을/어떻게 해야 하는지, 현재 단계·재배법 질문(뭐 해야 해, 지금 단계, 키우는 법).
+            - STATUS_CHECK: 환경·상태 질문(온도/습도/수분 괜찮아, 지금 상태 어때).
+            - INVENTORY_CHECK: 재고·자재 질문(약 있어, 비료 남았어).
+            - 인사·잡담·감사 등 위에 안 맞으면 intents=[].
+
+            [예시]
+            입력: "잎에 흰 가루가 생겼어요"
+            출력: {"transcription":"잎에 흰 가루가 생겼어요","intents":["DIAGNOSIS"],"zone":"","action":"","value":"","symptom":"잎에 흰 가루"}
+            입력: "오늘 가운데 줄에 물 줬어"
+            출력: {"transcription":"오늘 가운데 줄에 물 줬어","intents":["WORK_REPORT"],"zone":"가운데 줄","action":"물주기","value":"","symptom":""}
+            입력: "지금 뭐 해야 돼?"
+            출력: {"transcription":"지금 뭐 해야 돼?","intents":["MANUAL_LOOKUP"],"zone":"","action":"","value":"","symptom":""}
+            입력: "지금 온도 괜찮아?"
+            출력: {"transcription":"지금 온도 괜찮아?","intents":["STATUS_CHECK"],"zone":"","action":"","value":"","symptom":""}
+            입력: "고마워"
+            출력: {"transcription":"고마워","intents":[],"zone":"","action":"","value":"","symptom":""}
             
             [STT 오인식 사전 (발음 보정 가이드)]:
             - 양핵, 양엑 -> 양액
