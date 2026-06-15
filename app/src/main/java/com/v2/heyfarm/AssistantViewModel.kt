@@ -29,6 +29,11 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
 
     private val chatHistory = mutableListOf<String>()
 
+    init {
+        // 앱 시작 시 서버에서 최신 프롬프트(NLU/NLG) 수신 — 실패 시 폴백 유지.
+        viewModelScope.launch { AssistantPrompt.refresh() }
+    }
+
     fun setStatus(text: String) {
         _statusText.value = text
     }

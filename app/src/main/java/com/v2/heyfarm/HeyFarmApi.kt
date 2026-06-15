@@ -29,6 +29,10 @@ interface HeyFarmApi {
     /** 6. 전체 데이터 동기화 */
     @GET("/api/v1/farm/sync")
     suspend fun getFarmSync(): Response<FarmSyncResponse>
+
+    /** 7. 온디바이스 Nano 프롬프트(NLU/NLG)를 서버에서 수신 — 앱 리빌드 없이 튜닝 */
+    @GET("/api/v1/prompts")
+    suspend fun getPrompts(): Response<PromptConfig>
 }
 
 // --- Request/Response Data Models ---
@@ -76,4 +80,11 @@ data class FarmSyncResponse(
     val knowledge: List<DiagnosisResponse>?,
     val status: FacilityStatus?,
     val inventory: List<InventoryItem>?
+)
+
+// 서버가 통제하는 온디바이스 Nano 프롬프트(자리표시자 {{...}}는 앱이 채움). intents/params는 추가 필드(무시 가능).
+data class PromptConfig(
+    val version: String = "",
+    val nlu: String = "",
+    val nlg: String = ""
 )
