@@ -11,31 +11,7 @@ import kotlinx.coroutines.withContext
  */
 object AssistantPrompt {
 
-    @Volatile private var nluTemplate: String = DEFAULT_NLU
-    @Volatile private var nlgTemplate: String = DEFAULT_NLG
-    @Volatile var version: String = "local-fallback"; private set
-
-    /** 서버에서 최신 프롬프트 수신(실패 시 현재/폴백 유지). */
-    suspend fun refresh() = withContext(Dispatchers.IO) {
-        try {
-            val r = RetrofitClient.api.getPrompts().body() ?: return@withContext
-            if (r.nlu.isNotBlank()) nluTemplate = r.nlu
-            if (r.nlg.isNotBlank()) nlgTemplate = r.nlg
-            if (r.version.isNotBlank()) version = r.version
-        } catch (_: Exception) { /* 오프라인 등 — 기존/폴백 유지 */ }
-    }
-
-    fun getCombinedNluPrompt(historyContext: String, userInput: String): String =
-        nluTemplate.replace("{{history}}", historyContext).replace("{{user_input}}", userInput)
-
-    fun getCombinedNlgPrompt(historyContext: String, syncResponseJson: String,
-                             resultsJson: String, recognizedText: String): String =
-        nlgTemplate.replace("{{history}}", historyContext)
-            .replace("{{sync}}", syncResponseJson)
-            .replace("{{results}}", resultsJson)
-            .replace("{{recognized}}", recognizedText)
-
-    // ---- 오프라인 폴백(서버 nlu/nlg와 동일 — 자리표시자 {{...}}) ----
+    // ---- 오프라인 폴백(서버 nlu/nlg와 동일 — 자리표시자 {{...}}). nluTemplate보다 먼저 선언해야 함. ----
     private val DEFAULT_NLU = """
 <start_of_turn>user
 너는 스마트팜 'Hey Farm'의 데이터 추출 엔진이야.
@@ -87,4 +63,28 @@ object AssistantPrompt {
 3. TTS용이니 읽기 편한 존댓말로 짧고 명확하게. 인사 반복 금지.<end_of_turn>
 <start_of_turn>model
 """.trimIndent()
+
+    @Volatile private var nluTemplate: String = DEFAULT_NLU
+    @Volatile private var nlgTemplate: String = DEFAULT_NLG
+    @Volatile var version: String = "local-fallback"; private set
+
+    /** 서버에서 최신 프롬프트 수신(실패 시 현재/폴백 유지). */
+    suspend fun refresh() = withContext(Dispatchers.IO) {
+        try {
+            val r = RetrofitClient.api.getPrompts().body() ?: return@withContext
+            if (r.nlu.isNotBlank()) nluTemplate = r.nlu
+            if (r.nlg.isNotBlank()) nlgTemplate = r.nlg
+            if (r.version.isNotBlank()) version = r.version
+        } catch (_: Exception) { /* 오프라인 등 — 기존/폴백 유지 */ }
+    }
+
+    fun getCombinedNluPrompt(historyContext: String, userInput: String): String =
+        nluTemplate.replace("{{history}}", historyContext).replace("{{user_input}}", userInput)
+
+    fun getCombinedNlgPrompt(historyContext: String, syncResponseJson: String,
+                             resultsJson: String, recognizedText: String): String =
+        nlgTemplate.replace("{{history}}", historyContext)
+            .replace("{{sync}}", syncResponseJson)
+            .replace("{{results}}", resultsJson)
+            .replace("{{recognized}}", recognizedText)
 }
