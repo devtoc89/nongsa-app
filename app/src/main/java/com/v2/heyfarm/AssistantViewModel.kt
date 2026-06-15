@@ -29,9 +29,21 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
 
     private val chatHistory = mutableListOf<String>()
 
+    private val _photos = mutableStateOf<List<PhotoItem>>(emptyList())
+    val photos: State<List<PhotoItem>> = _photos
+
     init {
         // 앱 시작 시 서버에서 최신 프롬프트(NLU/NLG) 수신 — 실패 시 폴백 유지.
         viewModelScope.launch { AssistantPrompt.refresh() }
+        refreshPhotos()
+    }
+
+    /** active 작기 사진 갤러리 갱신(업로드 후·시작 시). */
+    fun refreshPhotos() {
+        viewModelScope.launch {
+            try { _photos.value = withContext(Dispatchers.IO) { RetrofitClient.api.getPhotos().body() } ?: emptyList() }
+            catch (_: Exception) {}
+        }
     }
 
     fun setStatus(text: String) {

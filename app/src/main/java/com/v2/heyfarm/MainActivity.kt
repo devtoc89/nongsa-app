@@ -33,7 +33,10 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import android.net.Uri
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.core.content.FileProvider
+import coil.compose.AsyncImage
 import java.io.File
 import okhttp3.MediaType
 import okhttp3.MultipartBody
@@ -122,6 +125,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                     val statusText by viewModel.statusText
                     val debugLog by viewModel.debugLog
                     val isPlanB by viewModel.isModeB
+                    val photos by viewModel.photos
 
                     Column(modifier = Modifier.fillMaxSize().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 16.dp)) {
@@ -140,6 +144,16 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                         TextButton(onClick = { photoPickerLauncher.launch("image/*") },
                                    modifier = Modifier.padding(bottom = 8.dp)) {
                             Text(text = "갤러리에서 선택")
+                        }
+                        if (photos.isNotEmpty()) {
+                            LazyRow(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+                                items(photos) { p ->
+                                    AsyncImage(
+                                        model = RetrofitClient.BASE_URL + p.photo_url,
+                                        contentDescription = p.value ?: "관측 사진",
+                                        modifier = Modifier.size(84.dp).padding(end = 6.dp))
+                                }
+                            }
                         }
                         Text(text = statusText, style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(bottom = 16.dp))
                         HorizontalDivider(thickness = 1.dp, color = Color.Gray)
@@ -282,7 +296,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                     else (res?.reason ?: "사진을 판독하지 못했습니다.")
                 }
             } catch (e: Exception) { "사진 업로드 실패: ${e.localizedMessage}" }
-            withContext(Dispatchers.Main) { viewModel.addDebugLog("API", "PHOTO: $msg"); speak(msg) }
+            withContext(Dispatchers.Main) { viewModel.addDebugLog("API", "PHOTO: $msg"); viewModel.refreshPhotos(); speak(msg) }
         }
     }
 
@@ -301,7 +315,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                     if (res != null) "${res.disease}. ${res.treatment} ${res.caution}" else "진단에 실패했습니다."
                 }
             } catch (e: Exception) { "진단 실패: ${e.localizedMessage}" }
-            withContext(Dispatchers.Main) { viewModel.addDebugLog("API", "DIAG_PHOTO: $msg"); speak(msg) }
+            withContext(Dispatchers.Main) { viewModel.addDebugLog("API", "DIAG_PHOTO: $msg"); viewModel.refreshPhotos(); speak(msg) }
         }
     }
 

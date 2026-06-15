@@ -62,6 +62,7 @@ dependencies {
     implementation(libs.genai.common)
     implementation(libs.genai.speech)
     implementation(libs.gson)
+    implementation("io.coil-kt:coil-compose:2.7.0")   // 네트워크 이미지(관측 사진 갤러리)
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)

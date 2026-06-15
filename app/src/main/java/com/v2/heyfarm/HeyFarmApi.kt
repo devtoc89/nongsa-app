@@ -48,6 +48,10 @@ interface HeyFarmApi {
     @POST("/api/v1/diag/photo")
     suspend fun diagPhoto(@Part image: MultipartBody.Part,
                           @Part("symptom") symptom: RequestBody): Response<DiagnosisResponse>
+
+    /** 10. active 작기의 사진 관측 목록(갤러리용) */
+    @GET("/api/v1/photos")
+    suspend fun getPhotos(): Response<List<PhotoItem>>
 }
 
 // --- Request/Response Data Models ---
@@ -102,6 +106,14 @@ data class PromptConfig(
     val version: String = "",
     val nlu: String = "",
     val nlg: String = ""
+)
+
+// 갤러리용 사진 관측 항목.
+data class PhotoItem(
+    val date: String = "",
+    val photo_url: String = "",
+    val value: String? = null,
+    val note: String? = null
 )
 
 // 사진 관측 응답(서버 비전 판독). assessment는 가변 구조라 Map으로 수신.
