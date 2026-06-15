@@ -49,13 +49,19 @@ class LlmManager(private val context: Context) {
 
     suspend fun checkAndPrepareModel(): Boolean = withContext(Dispatchers.IO) {
         try {
+            // Plan A(시스템 STT→텍스트 NLU/NLG)는 텍스트 모델만 있으면 동작.
+            // 음성모델(genai-speech, Plan B 전용)은 가용성과 분리 — 없어도 Plan A는 막히지 않음.
             val status = generativeModel?.checkStatus()
-            val speechStatus = speechRecognizer?.checkStatus()
-            if (status == FeatureStatus.AVAILABLE && speechStatus == FeatureStatus.AVAILABLE) {
+            if (status == FeatureStatus.AVAILABLE) {
                 generativeModel?.warmup()
                 true
             } else false
         } catch (ignored: Exception) { false }
+    }
+
+    /** Plan B(온디바이스 ASR) 사용 가능 여부 — 음성모델 별도 확인(미가용 시 Plan A 권장). */
+    suspend fun isSpeechReady(): Boolean = withContext(Dispatchers.IO) {
+        try { speechRecognizer?.checkStatus() == FeatureStatus.AVAILABLE } catch (e: Exception) { false }
     }
 
     suspend fun generate(prompt: String): String = withContext(Dispatchers.IO) {
