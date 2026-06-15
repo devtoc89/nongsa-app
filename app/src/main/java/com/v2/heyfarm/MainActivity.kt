@@ -38,9 +38,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.core.content.FileProvider
 import coil.compose.AsyncImage
 import java.io.File
-import okhttp3.MediaType
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
-import okhttp3.RequestBody
+import okhttp3.RequestBody.Companion.toRequestBody
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.v2.heyfarm.ui.theme.HeyfarmTheme
 import kotlinx.coroutines.*
@@ -289,7 +289,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
             val msg = try {
                 val bytes = contentResolver.openInputStream(uri)?.use { it.readBytes() }
                 if (bytes == null) "사진을 읽지 못했습니다." else {
-                    val reqBody = RequestBody.create(MediaType.parse("image/jpeg"), bytes)
+                    val reqBody = bytes.toRequestBody("image/jpeg".toMediaType())
                     val part = MultipartBody.Part.createFormData("image", "photo.jpg", reqBody)
                     val res = RetrofitClient.api.observePhoto(part).body()
                     if (res?.recorded == true) "모종 사진을 관측으로 기록했습니다."
@@ -309,8 +309,8 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                 val bytes = contentResolver.openInputStream(uri)?.use { it.readBytes() }
                 if (bytes == null) "사진을 읽지 못했습니다." else {
                     val imgPart = MultipartBody.Part.createFormData(
-                        "image", "photo.jpg", RequestBody.create(MediaType.parse("image/jpeg"), bytes))
-                    val symPart = RequestBody.create(MediaType.parse("text/plain; charset=utf-8"), symptom)
+                        "image", "photo.jpg", bytes.toRequestBody("image/jpeg".toMediaType()))
+                    val symPart = symptom.toRequestBody("text/plain; charset=utf-8".toMediaType())
                     val res = RetrofitClient.api.diagPhoto(imgPart, symPart).body()
                     if (res != null) "${res.disease}. ${res.treatment} ${res.caution}" else "진단에 실패했습니다."
                 }
