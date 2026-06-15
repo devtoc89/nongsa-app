@@ -25,6 +25,17 @@
             </intent-filter>
         </activity>
 
+        <!-- 카메라 촬영 결과를 저장/공유할 임시 파일 제공자 -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
     </application>
 
 </manifest>

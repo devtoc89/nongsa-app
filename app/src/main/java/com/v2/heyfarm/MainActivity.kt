@@ -33,6 +33,8 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import android.net.Uri
+import androidx.core.content.FileProvider
+import java.io.File
 import okhttp3.MediaType
 import okhttp3.MultipartBody
 import okhttp3.RequestBody
@@ -61,10 +63,21 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
     private val channelConfig = AudioFormat.CHANNEL_IN_MONO
     private val audioFormat = AudioFormat.ENCODING_PCM_16BIT
 
-    // 갤러리/카메라에서 모종 사진 선택 → 서버 비전 판독 → 관측 기록
+    // 모종 사진 → 서버 비전 판독 → 관측 기록. 카메라(우선) + 갤러리(보조).
+    private var cameraImageUri: Uri? = null
+    private val cameraLauncher = registerForActivityResult(
+        ActivityResultContracts.TakePicture()
+    ) { success: Boolean -> if (success) cameraImageUri?.let { uploadPhoto(it) } }
+
     private val photoPickerLauncher = registerForActivityResult(
         ActivityResultContracts.GetContent()
     ) { uri: Uri? -> if (uri != null) uploadPhoto(uri) }
+
+    private fun launchCamera() {
+        val file = File.createTempFile("melon_", ".jpg", cacheDir)
+        cameraImageUri = FileProvider.getUriForFile(this, "$packageName.fileprovider", file)
+        cameraLauncher.launch(cameraImageUri)
+    }
 
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -104,9 +117,13 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                             Spacer(modifier = Modifier.width(16.dp))
                             Switch(checked = isPlanB, onCheckedChange = { viewModel.toggleMode(it) })
                         }
-                        Button(onClick = { photoPickerLauncher.launch("image/*") },
-                               modifier = Modifier.padding(bottom = 12.dp)) {
-                            Text(text = "📷 모종 사진 등록")
+                        Button(onClick = { launchCamera() },
+                               modifier = Modifier.padding(bottom = 4.dp)) {
+                            Text(text = "📷 모종 사진 촬영")
+                        }
+                        TextButton(onClick = { photoPickerLauncher.launch("image/*") },
+                                   modifier = Modifier.padding(bottom = 8.dp)) {
+                            Text(text = "갤러리에서 선택")
                         }
                         Text(text = statusText, style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(bottom = 16.dp))
                         HorizontalDivider(thickness = 1.dp, color = Color.Gray)
@@ -161,8 +178,14 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                     if (!isProcessing.get()) lifecycleScope.launch { delay(1500); startListening() }
                 }
                 override fun onResults(results: Bundle?) {
-                    val text = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull() ?: ""
-                    if (!viewModel.isModeB.value && text.isNotEmpty()) onUserSpeechRecognized(text) else startListening()
+                    val cands = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION) ?: arrayListOf()
+                    if (!viewModel.isModeB.value && cands.isNotEmpty()) {
+                        // N-best가 여러 개면 NLU가 농업문맥으로 고르게 후보 형태로 전달.
+                        val text = if (cands.size > 1)
+                            cands.take(3).mapIndexed { i, c -> "후보${i + 1}: $c" }.joinToString(", ", "[", "]")
+                        else cands[0]
+                        onUserSpeechRecognized(text)
+                    } else startListening()
                 }
                 override fun onPartialResults(partialResults: Bundle?) {
                     val currentText = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.get(0) ?: ""
@@ -206,6 +229,9 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ko-KR")
+            putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, false)   // 온라인 인식 강제(한국어 정확도↑)
+            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)          // N-best → NLU가 농업문맥으로 보정
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 2000L)
         }
         lifecycleScope.launch(Dispatchers.Main) {
             try { 

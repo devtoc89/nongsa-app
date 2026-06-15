@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- 카메라 임시 사진 저장 위치(앱 캐시) -->
+    <cache-path name="cache" path="." />
+</paths>
