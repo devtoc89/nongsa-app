@@ -75,8 +75,9 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
 
     private fun launchCamera() {
         val file = File.createTempFile("melon_", ".jpg", cacheDir)
-        cameraImageUri = FileProvider.getUriForFile(this, "$packageName.fileprovider", file)
-        cameraLauncher.launch(cameraImageUri)
+        val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", file)
+        cameraImageUri = uri
+        cameraLauncher.launch(uri)   // non-null Uri 전달
     }
 
     private val requestPermissionLauncher = registerForActivityResult(
