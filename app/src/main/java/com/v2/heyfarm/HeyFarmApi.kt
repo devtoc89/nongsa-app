@@ -1,9 +1,12 @@
 package com.v2.heyfarm
 
+import okhttp3.MultipartBody
 import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.GET
+import retrofit2.http.Multipart
 import retrofit2.http.POST
+import retrofit2.http.Part
 
 interface HeyFarmApi {
     /** 1. 지식 그래프 진단 */
@@ -33,6 +36,11 @@ interface HeyFarmApi {
     /** 7. 온디바이스 Nano 프롬프트(NLU/NLG)를 서버에서 수신 — 앱 리빌드 없이 튜닝 */
     @GET("/api/v1/prompts")
     suspend fun getPrompts(): Response<PromptConfig>
+
+    /** 8. 모종 사진 업로드 → 서버 비전 판독 → active 작기 관측 기록 */
+    @Multipart
+    @POST("/api/v1/observe-photo")
+    suspend fun observePhoto(@Part image: MultipartBody.Part): Response<PhotoObsResponse>
 }
 
 // --- Request/Response Data Models ---
@@ -87,4 +95,14 @@ data class PromptConfig(
     val version: String = "",
     val nlu: String = "",
     val nlg: String = ""
+)
+
+// 사진 관측 응답(서버 비전 판독). assessment는 가변 구조라 Map으로 수신.
+data class PhotoObsResponse(
+    val recorded: Boolean = false,
+    val reason: String? = null,
+    val observation_id: String? = null,
+    val metric: String? = null,
+    val value: String? = null,
+    val assessment: Map<String, Any?>? = null
 )

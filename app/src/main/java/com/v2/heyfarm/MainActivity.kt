@@ -32,6 +32,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
+import android.net.Uri
+import okhttp3.MultipartBody
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.v2.heyfarm.ui.theme.HeyfarmTheme
 import kotlinx.coroutines.*
@@ -56,6 +60,11 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
     private val sampleRate = 16000
     private val channelConfig = AudioFormat.CHANNEL_IN_MONO
     private val audioFormat = AudioFormat.ENCODING_PCM_16BIT
+
+    // 갤러리/카메라에서 모종 사진 선택 → 서버 비전 판독 → 관측 기록
+    private val photoPickerLauncher = registerForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri: Uri? -> if (uri != null) uploadPhoto(uri) }
 
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -94,6 +103,10 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                             Text(text = if (isPlanB) "🤖 Plan B (모델 직접 인식)" else "⚙️ Plan A (시스템 STT)")
                             Spacer(modifier = Modifier.width(16.dp))
                             Switch(checked = isPlanB, onCheckedChange = { viewModel.toggleMode(it) })
+                        }
+                        Button(onClick = { photoPickerLauncher.launch("image/*") },
+                               modifier = Modifier.padding(bottom = 12.dp)) {
+                            Text(text = "📷 모종 사진 등록")
                         }
                         Text(text = statusText, style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(bottom = 16.dp))
                         HorizontalDivider(thickness = 1.dp, color = Color.Gray)
@@ -201,6 +214,25 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                     speechRecognizer?.startListening(intent) 
                 }
             } catch (ignored: Exception) { delay(1000); startListening() }
+        }
+    }
+
+    private fun uploadPhoto(uri: Uri) {
+        if (!isProcessing.compareAndSet(false, true)) return
+        viewModel.setStatus("사진 분석 중...")
+        viewModel.addDebugLog("API", "PHOTO 업로드 중...")
+        lifecycleScope.launch(Dispatchers.IO) {
+            val msg = try {
+                val bytes = contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                if (bytes == null) "사진을 읽지 못했습니다." else {
+                    val part = MultipartBody.Part.createFormData(
+                        "image", "photo.jpg", bytes.toRequestBody("image/*".toMediaType()))
+                    val res = RetrofitClient.api.observePhoto(part).body()
+                    if (res?.recorded == true) "모종 사진을 관측으로 기록했습니다."
+                    else (res?.reason ?: "사진을 판독하지 못했습니다.")
+                }
+            } catch (e: Exception) { "사진 업로드 실패: ${e.localizedMessage}" }
+            withContext(Dispatchers.Main) { viewModel.addDebugLog("API", "PHOTO: $msg"); speak(msg) }
         }
     }
 
