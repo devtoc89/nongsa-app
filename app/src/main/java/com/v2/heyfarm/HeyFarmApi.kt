@@ -61,7 +61,8 @@ data class SymptomRequest(val symptom: String)
 data class DiagnosisResponse(
     val disease: String,
     val treatment: String,
-    val caution: String
+    val caution: String,
+    val grounded: Boolean = false   // true=KMS 코퍼스 근거 / false=사진(비전) 추정
 )
 
 data class ManualData(

@@ -318,7 +318,10 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                         "image", "photo.jpg", bytes.toRequestBody("image/jpeg".toMediaType()))
                     val symPart = symptom.toRequestBody("text/plain; charset=utf-8".toMediaType())
                     val res = RetrofitClient.api.diagPhoto(imgPart, symPart).body()
-                    if (res != null) "${res.disease}. ${res.treatment} ${res.caution}" else "진단에 실패했습니다."
+                    if (res != null) {
+                        val badge = if (res.grounded) "🟢 KMS 근거" else "🟡 사진 추정"
+                        "$badge — ${res.disease}. ${res.treatment}"
+                    } else "진단에 실패했습니다."
                 }
             } catch (e: Exception) { "진단 실패: ${e.localizedMessage}" }
             withContext(Dispatchers.Main) { viewModel.addDebugLog("API", "DIAG_PHOTO: $msg"); viewModel.refreshPhotos(); speak(msg) }
