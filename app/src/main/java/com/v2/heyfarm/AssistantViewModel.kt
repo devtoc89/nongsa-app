@@ -128,8 +128,10 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
         addDebugLog("NLU Result", nluJson)
 
         val results = mutableMapOf<String, Any?>()
+        var loggedIntents: List<String> = emptyList()
         try {
             val intentData = gson.fromJson(nluJson, IntentData::class.java)
+            loggedIntents = intentData.intents ?: emptyList()
             if (!intentData.transcription.isNullOrBlank()) {
                 finalTranscription = intentData.transcription
             }
@@ -196,6 +198,20 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
 
         addDebugLog("AI", finalResponse)
         onSpeak(finalResponse)
+        sendTelemetry(userInput, finalTranscription, loggedIntents, results.keys.toList(), finalResponse)
+    }
+
+    /** 한 음성 턴을 서버(Langfuse)로 전송 — 실패 무시(대화 흐름에 영향 없음). */
+    private fun sendTelemetry(transcript: String, corrected: String, intents: List<String>, apis: List<String>, response: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                RetrofitClient.api.telemetry(TelemetryReq(
+                    transcript = transcript, corrected = corrected,
+                    intent = intents.joinToString(","), apis = apis,
+                    response = response, device = android.os.Build.MODEL,
+                    turn_id = java.util.UUID.randomUUID().toString()))
+            } catch (_: Exception) {}
+        }
     }
 
     private fun extractJson(text: String): String {

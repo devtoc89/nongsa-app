@@ -52,7 +52,22 @@ interface HeyFarmApi {
     /** 10. active 작기의 사진 관측 목록(갤러리용) */
     @GET("/api/v1/photos")
     suspend fun getPhotos(): Response<List<PhotoItem>>
+
+    /** 11. 폰 온디바이스 처리(STT→NLU→BFF→NLG) 텔레메트리 → Langfuse */
+    @POST("/api/v1/telemetry")
+    suspend fun telemetry(@Body body: TelemetryReq): Response<Map<String, Any?>>
 }
+
+// 한 음성 턴 텔레메트리(서버가 Langfuse 트레이스로 적재). 모든 필드 선택적.
+data class TelemetryReq(
+    val transcript: String = "",
+    val corrected: String? = null,
+    val intent: String? = null,
+    val apis: List<String> = emptyList(),
+    val response: String = "",
+    val device: String = "",
+    val turn_id: String = ""
+)
 
 // --- Request/Response Data Models ---
 
