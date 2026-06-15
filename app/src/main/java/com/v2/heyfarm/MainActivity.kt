@@ -33,9 +33,9 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import android.net.Uri
+import okhttp3.MediaType
 import okhttp3.MultipartBody
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.RequestBody
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.v2.heyfarm.ui.theme.HeyfarmTheme
 import kotlinx.coroutines.*
@@ -225,8 +225,8 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
             val msg = try {
                 val bytes = contentResolver.openInputStream(uri)?.use { it.readBytes() }
                 if (bytes == null) "사진을 읽지 못했습니다." else {
-                    val part = MultipartBody.Part.createFormData(
-                        "image", "photo.jpg", bytes.toRequestBody("image/*".toMediaType()))
+                    val reqBody = RequestBody.create(MediaType.parse("image/jpeg"), bytes)
+                    val part = MultipartBody.Part.createFormData("image", "photo.jpg", reqBody)
                     val res = RetrofitClient.api.observePhoto(part).body()
                     if (res?.recorded == true) "모종 사진을 관측으로 기록했습니다."
                     else (res?.reason ?: "사진을 판독하지 못했습니다.")
