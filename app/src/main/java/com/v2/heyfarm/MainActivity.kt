@@ -65,9 +65,18 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
 
     // 모종 사진 → 서버 비전 판독 → 관측 기록. 카메라(우선) + 갤러리(보조).
     private var cameraImageUri: Uri? = null
+    private var pendingDiag = false                 // true면 촬영 후 증상 음성을 받아 사진+음성 진단
+    private var pendingDiagPhotoUri: Uri? = null    // 증상 음성 대기 중인 사진
     private val cameraLauncher = registerForActivityResult(
         ActivityResultContracts.TakePicture()
-    ) { success: Boolean -> if (success) cameraImageUri?.let { uploadPhoto(it) } }
+    ) { success: Boolean ->
+        if (success) cameraImageUri?.let { uri ->
+            if (pendingDiag) {
+                pendingDiag = false; pendingDiagPhotoUri = uri
+                speak("사진을 받았어요. 어디가 어떻게 이상한지 말씀해 주세요.")  // 이어서 음성 수신→diag
+            } else uploadPhoto(uri)
+        }
+    }
 
     private val photoPickerLauncher = registerForActivityResult(
         ActivityResultContracts.GetContent()
@@ -79,6 +88,8 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         cameraImageUri = uri
         cameraLauncher.launch(uri)   // non-null Uri 전달
     }
+
+    private fun launchCameraForDiag() { pendingDiag = true; launchCamera() }
 
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -121,6 +132,10 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                         Button(onClick = { launchCamera() },
                                modifier = Modifier.padding(bottom = 4.dp)) {
                             Text(text = "📷 모종 사진 촬영")
+                        }
+                        Button(onClick = { launchCameraForDiag() },
+                               modifier = Modifier.padding(bottom = 4.dp)) {
+                            Text(text = "📷🎤 사진+음성 진단")
                         }
                         TextButton(onClick = { photoPickerLauncher.launch("image/*") },
                                    modifier = Modifier.padding(bottom = 8.dp)) {
@@ -180,6 +195,14 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                 }
                 override fun onResults(results: Bundle?) {
                     val cands = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION) ?: arrayListOf()
+                    // 사진+음성 진단 대기 중이면, 이번 발화를 증상으로 사진과 함께 전송.
+                    val diagUri = pendingDiagPhotoUri
+                    if (diagUri != null) {
+                        pendingDiagPhotoUri = null
+                        val sym = cands.firstOrNull() ?: ""
+                        if (sym.isNotEmpty()) uploadDiagPhoto(diagUri, sym) else startListening()
+                        return
+                    }
                     if (!viewModel.isModeB.value && cands.isNotEmpty()) {
                         // N-best가 여러 개면 NLU가 농업문맥으로 고르게 후보 형태로 전달.
                         val text = if (cands.size > 1)
@@ -260,6 +283,25 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                 }
             } catch (e: Exception) { "사진 업로드 실패: ${e.localizedMessage}" }
             withContext(Dispatchers.Main) { viewModel.addDebugLog("API", "PHOTO: $msg"); speak(msg) }
+        }
+    }
+
+    private fun uploadDiagPhoto(uri: Uri, symptom: String) {
+        if (!isProcessing.compareAndSet(false, true)) return
+        viewModel.setStatus("사진+음성 진단 중...")
+        viewModel.addDebugLog("USER", "[사진+음성] $symptom")
+        lifecycleScope.launch(Dispatchers.IO) {
+            val msg = try {
+                val bytes = contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                if (bytes == null) "사진을 읽지 못했습니다." else {
+                    val imgPart = MultipartBody.Part.createFormData(
+                        "image", "photo.jpg", RequestBody.create(MediaType.parse("image/jpeg"), bytes))
+                    val symPart = RequestBody.create(MediaType.parse("text/plain; charset=utf-8"), symptom)
+                    val res = RetrofitClient.api.diagPhoto(imgPart, symPart).body()
+                    if (res != null) "${res.disease}. ${res.treatment} ${res.caution}" else "진단에 실패했습니다."
+                }
+            } catch (e: Exception) { "진단 실패: ${e.localizedMessage}" }
+            withContext(Dispatchers.Main) { viewModel.addDebugLog("API", "DIAG_PHOTO: $msg"); speak(msg) }
         }
     }
 

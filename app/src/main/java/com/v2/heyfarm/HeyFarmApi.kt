@@ -1,6 +1,7 @@
 package com.v2.heyfarm
 
 import okhttp3.MultipartBody
+import okhttp3.RequestBody
 import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.GET
@@ -41,6 +42,12 @@ interface HeyFarmApi {
     @Multipart
     @POST("/api/v1/observe-photo")
     suspend fun observePhoto(@Part image: MultipartBody.Part): Response<PhotoObsResponse>
+
+    /** 9. 사진 + 음성 증상설명 → 멀티모달 비전 진단 */
+    @Multipart
+    @POST("/api/v1/diag/photo")
+    suspend fun diagPhoto(@Part image: MultipartBody.Part,
+                          @Part("symptom") symptom: RequestBody): Response<DiagnosisResponse>
 }
 
 // --- Request/Response Data Models ---
