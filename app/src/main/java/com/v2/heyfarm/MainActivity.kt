@@ -123,7 +123,6 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
             HeyfarmTheme {
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     val statusText by viewModel.statusText
-                    val debugLog by viewModel.debugLog
                     val isPlanB by viewModel.isModeB
                     val photos by viewModel.photos
 
@@ -161,7 +160,14 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                         Text(text = "[Debug Log]", style = MaterialTheme.typography.labelLarge, color = Color.Gray, modifier = Modifier.align(Alignment.Start))
                         Surface(modifier = Modifier.fillMaxWidth().weight(1f), color = Color.DarkGray.copy(alpha = 0.1f), shape = MaterialTheme.shapes.medium) {
                             Column(modifier = Modifier.fillMaxSize().padding(8.dp).verticalScroll(rememberScrollState())) {
-                                Text(text = debugLog, style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, lineHeight = 14.sp), color = MaterialTheme.colorScheme.onSurface)
+                                viewModel.log.forEach { e ->
+                                    Text(text = e.header, style = MaterialTheme.typography.labelSmall, color = Color.Gray, modifier = Modifier.padding(top = 6.dp))
+                                    if (e.content.isNotBlank())
+                                        Text(text = e.content, style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, lineHeight = 14.sp), color = MaterialTheme.colorScheme.onSurface)
+                                    e.image?.let { img ->
+                                        AsyncImage(model = img, contentDescription = null, modifier = Modifier.size(180.dp).padding(vertical = 4.dp))
+                                    }
+                                }
                             }
                         }
                     }
@@ -284,7 +290,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
     private fun uploadPhoto(uri: Uri) {
         if (!isProcessing.compareAndSet(false, true)) return
         viewModel.setStatus("사진 분석 중...")
-        viewModel.addDebugLog("API", "PHOTO 업로드 중...")
+        viewModel.addImageLog("USER", uri, "[사진] 업로드")
         lifecycleScope.launch(Dispatchers.IO) {
             val msg = try {
                 val bytes = contentResolver.openInputStream(uri)?.use { it.readBytes() }
@@ -303,7 +309,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
     private fun uploadDiagPhoto(uri: Uri, symptom: String) {
         if (!isProcessing.compareAndSet(false, true)) return
         viewModel.setStatus("사진+음성 진단 중...")
-        viewModel.addDebugLog("USER", "[사진+음성] $symptom")
+        viewModel.addImageLog("USER", uri, "[사진+음성] $symptom")
         lifecycleScope.launch(Dispatchers.IO) {
             val msg = try {
                 val bytes = contentResolver.openInputStream(uri)?.use { it.readBytes() }

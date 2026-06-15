@@ -3,6 +3,7 @@ package com.v2.heyfarm
 import android.app.Application
 import android.util.Log
 import androidx.compose.runtime.State
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -21,8 +22,8 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
     private val _statusText = mutableStateOf("Hey Farm 서비스가 준비되었습니다.")
     val statusText: State<String> = _statusText
 
-    private val _debugLog = mutableStateOf("")
-    val debugLog: State<String> = _debugLog
+    // 대화/디버그 로그 — 텍스트 또는 이미지(사진) 항목. 최신이 위.
+    val log = mutableStateListOf<LogEntry>()
 
     private val _isModeB = mutableStateOf(false)
     val isModeB: State<Boolean> = _isModeB
@@ -50,18 +51,19 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
         _statusText.value = text
     }
 
-    fun addDebugLog(tag: String, content: String) {
-        val timestamp = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
-        val prefix = when(tag) {
-            "USER" -> "👤 [나]"
-            "AI" -> "🤖 [AI]"
-            "API" -> "⚙️ [API]"
-            "NLU" -> "🔍 [NLU]"
+    private fun header(tag: String): String {
+        val ts = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
+        val prefix = when (tag) {
+            "USER" -> "👤 [나]"; "AI" -> "🤖 [AI]"; "API" -> "⚙️ [API]"; "NLU" -> "🔍 [NLU]"
             else -> "⚙️ [$tag]"
         }
-        val newEntry = "$prefix ($timestamp)\n$content\n\n"
-        _debugLog.value = newEntry + _debugLog.value
+        return "$prefix ($ts)"
     }
+
+    fun addDebugLog(tag: String, content: String) { log.add(0, LogEntry(header(tag), content)) }
+
+    /** 사진(이미지) 로그 — 대화창에 인라인 표시. image=로컬 Uri 또는 URL. */
+    fun addImageLog(tag: String, image: Any?, content: String = "") { log.add(0, LogEntry(header(tag), content, image)) }
 
     fun toggleMode(enabled: Boolean) {
         _isModeB.value = enabled
@@ -208,3 +210,6 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
 
     data class IntentData(val transcription: String?, val intents: List<String>?, val zone: String?, val action: String?, val value: String?, val symptom: String?)
 }
+
+/** 대화/디버그 로그 항목. image!=null 이면 대화창에 이미지로 표시. */
+data class LogEntry(val header: String, val content: String, val image: Any? = null)
