@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "953169280016",
+    "project_id": "com-v1-heyfarm-bae6a",
+    "storage_bucket": "com-v1-heyfarm-bae6a.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:953169280016:android:e5bc4956646d86065c5e95",
+        "android_client_info": {
+          "package_name": "com.v1.heyfarm"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAT4amcMkYKYST-zB82ySIT2Ovjrmy5hJ8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:953169280016:android:56ee49401c4220b25c5e95",
+        "android_client_info": {
+          "package_name": "com.v2.heyfarm"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAT4amcMkYKYST-zB82ySIT2Ovjrmy5hJ8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

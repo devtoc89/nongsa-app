@@ -1,0 +1,193 @@
+package com.v2.heyfarm
+
+import android.app.Application
+import android.util.Log
+import androidx.compose.runtime.State
+import androidx.compose.runtime.mutableStateOf
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import com.google.gson.Gson
+import com.v2.heyfarm.prompt.AssistantPrompt
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+class AssistantViewModel(application: Application) : AndroidViewModel(application) {
+    private val gson = Gson()
+    private val llmManager = LlmManager(application)
+
+    private val _statusText = mutableStateOf("Hey Farm 서비스가 준비되었습니다.")
+    val statusText: State<String> = _statusText
+
+    private val _debugLog = mutableStateOf("")
+    val debugLog: State<String> = _debugLog
+
+    private val _isModeB = mutableStateOf(false)
+    val isModeB: State<Boolean> = _isModeB
+
+    private val chatHistory = mutableListOf<String>()
+
+    fun setStatus(text: String) {
+        _statusText.value = text
+    }
+
+    fun addDebugLog(tag: String, content: String) {
+        val timestamp = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
+        val prefix = when(tag) {
+            "USER" -> "👤 [나]"
+            "AI" -> "🤖 [AI]"
+            "API" -> "⚙️ [API]"
+            "NLU" -> "🔍 [NLU]"
+            else -> "⚙️ [$tag]"
+        }
+        val newEntry = "$prefix ($timestamp)\n$content\n\n"
+        _debugLog.value = newEntry + _debugLog.value
+    }
+
+    fun toggleMode(enabled: Boolean) {
+        _isModeB.value = enabled
+    }
+
+    fun processQuery(userInput: String, audioData: ByteArray? = null, onSpeak: (String) -> Unit, onProcessingFinished: () -> Unit) {
+        viewModelScope.launch {
+            try {
+                processCombinedFlow(userInput, audioData, onSpeak)
+            } finally {
+                onProcessingFinished()
+            }
+        }
+    }
+
+    private suspend fun processCombinedFlow(userInput: String, audioData: ByteArray?, onSpeak: (String) -> Unit) {
+        val isDirect = audioData != null
+        _statusText.value = if (isDirect) "모델이 직접 음성 분석 중 (Plan B)..." else "AI가 생각 중 (Plan A)..."
+        
+        if (!llmManager.checkAndPrepareModel()) {
+            onSpeak("AI 모델이 준비되지 않았습니다.")
+            return
+        }
+
+        // 1. 공통 데이터 싱크 (농장 현황 파악)
+        val syncResponse = withContext(Dispatchers.IO) {
+            try { 
+                val res = RetrofitClient.api.getFarmSync().body()
+                addDebugLog("API", "SYNC: ${gson.toJson(res)}")
+                res
+            } catch (e: Exception) { 
+                addDebugLog("API", "SYNC ERROR: ${e.localizedMessage}")
+                null 
+            }
+        }
+
+        // 2. [핵심 NLU] 의도 추출 및 히스토리 참조
+        val historyContext = chatHistory.takeLast(10).joinToString("\n")
+        
+        val nluResultRaw = withContext(Dispatchers.IO) { 
+            if (isDirect && audioData != null) {
+                // Plan B: 모델 직접 ASR 수행
+                llmManager.transcribeAudio(audioData)
+            } else {
+                // Plan A: 시스템 STT 텍스트 분석
+                val nluPrompt = AssistantPrompt.getCombinedNluPrompt(historyContext, userInput)
+                addDebugLog("NLU PROMPT", nluPrompt)
+                llmManager.generate(nluPrompt)
+            }
+        }
+
+        var finalTranscription = if (isDirect) nluResultRaw else userInput
+        val finalNluJson = if (isDirect) {
+            // Plan B에서 텍스트를 뽑았으므로, 다시 의도 파악 수행
+            val nluPrompt = AssistantPrompt.getCombinedNluPrompt(historyContext, finalTranscription)
+            llmManager.generate(nluPrompt)
+        } else {
+            nluResultRaw
+        }
+
+        val nluJson = extractJson(finalNluJson)
+        addDebugLog("NLU Result", nluJson)
+
+        val results = mutableMapOf<String, Any?>()
+        try {
+            val intentData = gson.fromJson(nluJson, IntentData::class.java)
+            if (!intentData.transcription.isNullOrBlank()) {
+                finalTranscription = intentData.transcription
+            }
+            
+            // 3. 각 의도별 API 병렬 실행
+            withContext(Dispatchers.IO) {
+                val safeIntents = intentData.intents ?: emptyList()
+                val deferreds = safeIntents.map { intent ->
+                    async {
+                        try {
+                            when (intent) {
+                                "WORK_REPORT" -> {
+                                    val report = WorkReport(intentData.action ?: "", intentData.zone ?: "", "COMPLETED")
+                                    val res = RetrofitClient.api.reportWork(report).body()
+                                    results["work_report"] = res
+                                    addDebugLog("API", "WORK_REPORT: ${gson.toJson(res)}")
+                                }
+                                "DIAGNOSIS" -> {
+                                    val res = RetrofitClient.api.diagnoseSymptom(SymptomRequest(intentData.symptom ?: "")).body()
+                                    results["diagnosis"] = res
+                                    addDebugLog("API", "DIAGNOSIS: ${gson.toJson(res)}")
+                                }
+                                "MANUAL_LOOKUP" -> {
+                                    val res = RetrofitClient.api.getMelonManual().body()
+                                    results["manual"] = res
+                                    addDebugLog("API", "MANUAL: ${gson.toJson(res)}")
+                                }
+                                "STATUS_CHECK" -> {
+                                    val res = RetrofitClient.api.getFacilityStatus().body()
+                                    results["facility_status"] = res
+                                    addDebugLog("API", "STATUS: ${gson.toJson(res)}")
+                                }
+                                "INVENTORY_CHECK" -> {
+                                    val res = RetrofitClient.api.getInventory().body()
+                                    results["inventory"] = res
+                                    addDebugLog("API", "INVENTORY: ${gson.toJson(res)}")
+                                }
+                            }
+                        } catch (e: Exception) {
+                            Log.e("ViewModel", "API Error: $intent", e)
+                        }
+                    }
+                }
+                deferreds.awaitAll()
+            }
+        } catch (e: Exception) {
+            Log.e("ViewModel", "Parsing Error", e)
+        }
+
+        // 4. [핵심 NLG] 통합 답변 생성 (세부 지침 엄수)
+        val syncResponseJson = gson.toJson(syncResponse)
+        val resultsJson = gson.toJson(results)
+        val nlgPrompt = AssistantPrompt.getCombinedNlgPrompt(historyContext, syncResponseJson, resultsJson, finalTranscription)
+        
+        addDebugLog("NLG PROMPT", nlgPrompt)
+        
+        val finalResponse = withContext(Dispatchers.IO) { 
+            llmManager.generate(nlgPrompt) 
+        }
+
+        chatHistory.add("User: $finalTranscription")
+        chatHistory.add("AI: $finalResponse")
+        if (chatHistory.size > 10) repeat(2) { chatHistory.removeAt(0) }
+
+        addDebugLog("AI", finalResponse)
+        onSpeak(finalResponse)
+    }
+
+    private fun extractJson(text: String): String {
+        val regex = Regex("\\{.*\\}", RegexOption.DOT_MATCHES_ALL)
+        return regex.find(text)?.value ?: "{}"
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        llmManager.close()
+    }
+
+    data class IntentData(val transcription: String?, val intents: List<String>?, val zone: String?, val action: String?, val value: String?, val symptom: String?)
+}

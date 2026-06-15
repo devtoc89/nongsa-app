@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- HTTPS(tailscale serve)로 전환 — cleartext 전면 차단(기본 보안). -->
+    <base-config cleartextTrafficPermitted="false" />
+</network-security-config>
