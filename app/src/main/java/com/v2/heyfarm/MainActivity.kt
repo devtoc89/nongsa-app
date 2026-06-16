@@ -33,8 +33,10 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import android.net.Uri
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.core.content.FileProvider
 import coil.compose.AsyncImage
 import java.io.File
@@ -141,45 +143,62 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                                      style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(10.dp))
                             }
                         }
-                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 16.dp)) {
-                            Text(text = if (isPlanB) "🤖 Plan B (모델 직접 인식)" else "⚙️ Plan A (시스템 STT)")
-                            Spacer(modifier = Modifier.width(16.dp))
-                            Switch(checked = isPlanB, onCheckedChange = { viewModel.toggleMode(it) })
-                        }
-                        Button(onClick = { launchCamera() },
-                               modifier = Modifier.padding(bottom = 4.dp)) {
-                            Text(text = "📷 모종 사진 촬영")
-                        }
-                        Button(onClick = { launchCameraForDiag() },
-                               modifier = Modifier.padding(bottom = 4.dp)) {
-                            Text(text = "📷🎤 사진+음성 진단")
-                        }
-                        TextButton(onClick = { photoPickerLauncher.launch("image/*") },
-                                   modifier = Modifier.padding(bottom = 8.dp)) {
-                            Text(text = "갤러리에서 선택")
-                        }
+                        // 상태 한 줄(듣는 중 / 분석 중 등) — 작게.
+                        Text(text = statusText, style = MaterialTheme.typography.bodyMedium,
+                             color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(bottom = 6.dp))
+
+                        // active 작기 사진 갤러리(있을 때만).
                         if (photos.isNotEmpty()) {
-                            LazyRow(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+                            LazyRow(modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp)) {
                                 items(photos) { p ->
                                     AsyncImage(
                                         model = RetrofitClient.BASE_URL + p.photo_url,
                                         contentDescription = p.value ?: "관측 사진",
-                                        modifier = Modifier.size(84.dp).padding(end = 6.dp))
+                                        modifier = Modifier.size(72.dp).padding(end = 6.dp))
                                 }
                             }
                         }
-                        Text(text = statusText, style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(bottom = 16.dp))
-                        HorizontalDivider(thickness = 1.dp, color = Color.Gray)
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Text(text = "[Debug Log]", style = MaterialTheme.typography.labelLarge, color = Color.Gray, modifier = Modifier.align(Alignment.Start))
-                        Surface(modifier = Modifier.fillMaxWidth().weight(1f), color = Color.DarkGray.copy(alpha = 0.1f), shape = MaterialTheme.shapes.medium) {
-                            Column(modifier = Modifier.fillMaxSize().padding(8.dp).verticalScroll(rememberScrollState())) {
-                                viewModel.log.forEach { e ->
-                                    Text(text = e.header, style = MaterialTheme.typography.labelSmall, color = Color.Gray, modifier = Modifier.padding(top = 6.dp))
-                                    if (e.content.isNotBlank())
-                                        Text(text = e.content, style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, lineHeight = 14.sp), color = MaterialTheme.colorScheme.onSurface)
-                                    e.image?.let { img ->
-                                        AsyncImage(model = img, contentDescription = null, modifier = Modifier.size(180.dp).padding(vertical = 4.dp))
+
+                        // ── 대화 말풍선(메인) ── USER/AI 턴만, 오래된→최신, 새 메시지 시 자동 스크롤.
+                        val convo = viewModel.log.filter { it.role != ChatRole.DEBUG }.asReversed()
+                        val listState = rememberLazyListState()
+                        LaunchedEffect(convo.size) {
+                            if (convo.isNotEmpty()) listState.animateScrollToItem(convo.size - 1)
+                        }
+                        LazyColumn(state = listState, modifier = Modifier.fillMaxWidth().weight(1f)) {
+                            items(convo) { e -> MessageBubble(e) }
+                        }
+
+                        // ── 하단 액션 바 ──
+                        Row(modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+                            horizontalArrangement = Arrangement.SpaceEvenly) {
+                            Button(onClick = { launchCamera() }) { Text("📷 모종") }
+                            Button(onClick = { launchCameraForDiag() }) { Text("📷🎤 진단") }
+                            TextButton(onClick = { photoPickerLauncher.launch("image/*") }) { Text("갤러리") }
+                        }
+
+                        // ── 디버그(개발용) — 토글로 펼침. Plan A/B 스위치·원시 로그 포함. ──
+                        var showDebug by remember { mutableStateOf(false) }
+                        TextButton(onClick = { showDebug = !showDebug }, modifier = Modifier.align(Alignment.Start)) {
+                            Text(text = if (showDebug) "🛠 디버그 닫기" else "🛠 디버그",
+                                 style = MaterialTheme.typography.labelMedium, color = Color.Gray)
+                        }
+                        if (showDebug) {
+                            Row(verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.align(Alignment.Start).padding(bottom = 4.dp)) {
+                                Text(text = if (isPlanB) "🤖 Plan B" else "⚙️ Plan A", style = MaterialTheme.typography.labelMedium)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Switch(checked = isPlanB, onCheckedChange = { viewModel.toggleMode(it) })
+                            }
+                            Surface(modifier = Modifier.fillMaxWidth().height(200.dp), color = Color.DarkGray.copy(alpha = 0.1f), shape = MaterialTheme.shapes.medium) {
+                                Column(modifier = Modifier.fillMaxSize().padding(8.dp).verticalScroll(rememberScrollState())) {
+                                    viewModel.log.forEach { e ->
+                                        Text(text = e.header, style = MaterialTheme.typography.labelSmall, color = Color.Gray, modifier = Modifier.padding(top = 6.dp))
+                                        if (e.content.isNotBlank())
+                                            Text(text = e.content, style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, lineHeight = 14.sp), color = MaterialTheme.colorScheme.onSurface)
+                                        e.image?.let { img ->
+                                            AsyncImage(model = img, contentDescription = null, modifier = Modifier.size(120.dp).padding(vertical = 4.dp))
+                                        }
                                     }
                                 }
                             }
@@ -204,7 +223,9 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
 
     private fun onUserSpeechRecognized(text: String, audioData: ByteArray? = null) {
         if (!isProcessing.compareAndSet(false, true)) return
-        viewModel.addDebugLog("USER", if (audioData != null) "[Plan B Audio Captured]" else text)
+        // 음성(audioData)은 전사 후 ViewModel이 사용자 말풍선을 추가 — 여기선 디버그만.
+        if (audioData != null) viewModel.addDebugLog("AUDIO", "[음성 입력 캡처]")
+        else viewModel.addDebugLog("USER", text)
         viewModel.processQuery(text, audioData = audioData, 
             onSpeak = { response -> speak(response) }, 
             onProcessingFinished = { isProcessing.set(false) })
@@ -430,7 +451,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                     else (res?.reason ?: "사진을 판독하지 못했습니다.")
                 }
             } catch (e: Exception) { "사진 업로드 실패: ${e.localizedMessage}" }
-            withContext(Dispatchers.Main) { viewModel.addDebugLog("API", "PHOTO: $msg"); viewModel.refreshPhotos(); speak(msg) }
+            withContext(Dispatchers.Main) { viewModel.addDebugLog("AI", msg); viewModel.refreshPhotos(); speak(msg) }
         }
     }
 
@@ -452,7 +473,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                     } else "진단에 실패했습니다."
                 }
             } catch (e: Exception) { "진단 실패: ${e.localizedMessage}" }
-            withContext(Dispatchers.Main) { viewModel.addDebugLog("API", "DIAG_PHOTO: $msg"); viewModel.refreshPhotos(); speak(msg) }
+            withContext(Dispatchers.Main) { viewModel.addDebugLog("AI", msg); viewModel.refreshPhotos(); speak(msg) }
         }
     }
 
@@ -488,5 +509,29 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         toneGenerator?.release()
         recordingJob?.cancel()
         super.onDestroy()
+    }
+}
+
+/** 대화 말풍선 — USER는 오른쪽(primary), AI는 왼쪽(surfaceVariant). 이미지 포함 가능. */
+@Composable
+private fun MessageBubble(e: LogEntry) {
+    val isUser = e.role == ChatRole.USER
+    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start) {
+        Surface(
+            color = if (isUser) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+            shape = MaterialTheme.shapes.large,
+            modifier = Modifier.widthIn(max = 300.dp)
+        ) {
+            Column(modifier = Modifier.padding(10.dp)) {
+                if (e.content.isNotBlank())
+                    Text(text = e.content, style = MaterialTheme.typography.bodyLarge,
+                         color = MaterialTheme.colorScheme.onSurface)
+                e.image?.let { img ->
+                    AsyncImage(model = img, contentDescription = null,
+                        modifier = Modifier.size(200.dp).padding(top = if (e.content.isNotBlank()) 6.dp else 0.dp))
+                }
+            }
+        }
     }
 }

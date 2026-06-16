@@ -79,10 +79,14 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
         return "$prefix ($ts)"
     }
 
-    fun addDebugLog(tag: String, content: String) { log.add(0, LogEntry(header(tag), content)) }
+    fun addDebugLog(tag: String, content: String) { log.add(0, LogEntry(header(tag), content, null, roleOf(tag))) }
 
     /** 사진(이미지) 로그 — 대화창에 인라인 표시. image=로컬 Uri 또는 URL. */
-    fun addImageLog(tag: String, image: Any?, content: String = "") { log.add(0, LogEntry(header(tag), content, image)) }
+    fun addImageLog(tag: String, image: Any?, content: String = "") { log.add(0, LogEntry(header(tag), content, image, roleOf(tag))) }
+
+    private fun roleOf(tag: String): ChatRole = when (tag) {
+        "USER" -> ChatRole.USER; "AI" -> ChatRole.AI; else -> ChatRole.DEBUG
+    }
 
     fun toggleMode(enabled: Boolean) {
         _isModeB.value = enabled
@@ -210,6 +214,9 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
             Log.e("ViewModel", "Parsing Error", e)
         }
 
+        // 음성 입력의 사용자 말풍선 — 전사/NLU로 확정된 텍스트로 표시(원시 "[음성 캡처]" 대신).
+        if (isDirect) addDebugLog("USER", finalTranscription)
+
         // 4. [핵심 NLG] 통합 답변 생성 (세부 지침 엄수)
         val syncResponseJson = gson.toJson(syncResponse)
         val resultsJson = gson.toJson(results)
@@ -258,5 +265,8 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
     data class IntentData(val transcription: String?, val intents: List<String>?, val zone: String?, val action: String?, val value: String?, val symptom: String?)
 }
 
-/** 대화/디버그 로그 항목. image!=null 이면 대화창에 이미지로 표시. */
-data class LogEntry(val header: String, val content: String, val image: Any? = null)
+/** 대화 말풍선 역할 — USER/AI는 대화 뷰에, DEBUG는 디버그 패널에만 표시. */
+enum class ChatRole { USER, AI, DEBUG }
+
+/** 대화/디버그 로그 항목. role로 대화(USER/AI) vs 디버그 구분. image!=null 이면 이미지 표시. */
+data class LogEntry(val header: String, val content: String, val image: Any? = null, val role: ChatRole = ChatRole.DEBUG)
