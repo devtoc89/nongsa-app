@@ -76,26 +76,42 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
     private var cameraImageUri: Uri? = null
     private var pendingDiag = false                 // true면 촬영 후 증상 음성을 받아 사진+음성 진단
     private var pendingDiagPhotoUri: Uri? = null    // 증상 음성 대기 중인 사진
+    // 카메라/갤러리 동안 항상-듣기 루프 정지 — 백그라운드 캡처가 사진을 빈 오디오로 소비하는 것 방지.
+    @Volatile private var listenPaused = false
     private val cameraLauncher = registerForActivityResult(
         ActivityResultContracts.TakePicture()
     ) { success: Boolean ->
         if (success) cameraImageUri?.let { uri ->
             if (pendingDiag) {
                 pendingDiag = false; pendingDiagPhotoUri = uri
+                listenPaused = false
                 speak("사진을 받았어요. 어디가 어떻게 이상한지 말씀해 주세요.")  // 이어서 음성 수신→diag
-            } else uploadPhoto(uri)
+            } else { listenPaused = false; uploadPhoto(uri) }
+        } else {   // 촬영 취소 → 진단 대기 해제하고 듣기 재개
+            pendingDiag = false; pendingDiagPhotoUri = null; listenPaused = false; startListening()
         }
     }
 
     private val photoPickerLauncher = registerForActivityResult(
         ActivityResultContracts.GetContent()
-    ) { uri: Uri? -> if (uri != null) uploadPhoto(uri) }
+    ) { uri: Uri? ->
+        listenPaused = false
+        if (uri != null) uploadPhoto(uri) else startListening()   // 선택 취소 → 듣기 재개
+    }
 
     private fun launchCamera() {
+        pauseListening()   // 카메라 동안 백그라운드 캡처 정지(사진 소비 방지)
         val file = File.createTempFile("melon_", ".jpg", cacheDir)
         val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", file)
         cameraImageUri = uri
         cameraLauncher.launch(uri)   // non-null Uri 전달
+    }
+
+    /** 항상-듣기 루프 정지 + 진행 중 캡처 취소(카메라/갤러리 진입 시). */
+    private fun pauseListening() {
+        listenPaused = true
+        recordingJob?.cancel()
+        isListening.set(false)
     }
 
     private fun launchCameraForDiag() { pendingDiag = true; launchCamera() }
@@ -174,7 +190,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                             horizontalArrangement = Arrangement.SpaceEvenly) {
                             Button(onClick = { launchCamera() }) { Text("📷 모종") }
                             Button(onClick = { launchCameraForDiag() }) { Text("📷🎤 진단") }
-                            TextButton(onClick = { photoPickerLauncher.launch("image/*") }) { Text("갤러리") }
+                            TextButton(onClick = { pauseListening(); photoPickerLauncher.launch("image/*") }) { Text("갤러리") }
                         }
 
                         // ── 디버그(개발용) — 토글로 펼침. Plan A/B 스위치·원시 로그 포함. ──
@@ -305,7 +321,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
 
     /** 듣기 시작 — 첫 호출 때 Nano ASR 가용성을 판별해 프리롤 캡처 또는 시스템 STT로 분기. */
     private fun startListening() {
-        if (isFinishing || isDestroyed || isProcessing.get() || isListening.get()) return
+        if (isFinishing || isDestroyed || isProcessing.get() || isListening.get() || listenPaused) return
         if (!asrDecided.get()) {
             lifecycleScope.launch {
                 val ready = try { viewModel.isSpeechReady() } catch (e: Exception) { false }
