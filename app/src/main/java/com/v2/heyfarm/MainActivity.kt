@@ -370,7 +370,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                     lastVoiceMs = elapsedMs
                 }
                 if (!speechStarted && elapsedMs > 6000L) break
-                if (speechStarted && elapsedMs - lastVoiceMs > 1000L) break
+                if (speechStarted && elapsedMs - lastVoiceMs > 1500L) break   // 중간 호흡을 종료로 오인 완화
                 if (elapsedMs > 12000L) break
             }
             try { rec.stop() } catch (e: Exception) {}
