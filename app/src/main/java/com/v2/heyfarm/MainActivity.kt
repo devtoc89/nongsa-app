@@ -131,7 +131,8 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                     val photos by viewModel.photos
                     val context by viewModel.context
 
-                    Column(modifier = Modifier.fillMaxSize().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    // edge-to-edge(targetSDK 36)에서 상태바·내비바에 콘텐츠가 가리지 않게 시스템 인셋 패딩.
+                    Column(modifier = Modifier.fillMaxSize().safeDrawingPadding().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         context?.let { ctx ->
                             Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = MaterialTheme.shapes.medium,
                                     modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp)) {
