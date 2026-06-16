@@ -56,7 +56,13 @@ interface HeyFarmApi {
     /** 11. 폰 온디바이스 처리(STT→NLU→BFF→NLG) 텔레메트리 → Langfuse */
     @POST("/api/v1/telemetry")
     suspend fun telemetry(@Body body: TelemetryReq): Response<Map<String, Any?>>
+
+    /** 12. STT 교정용 KMS 도메인 어휘 — NLU 프롬프트 {{vocab}}에 주입 */
+    @GET("/api/v1/vocab")
+    suspend fun getVocab(): Response<VocabResp>
 }
+
+data class VocabResp(val terms: List<String> = emptyList())
 
 // 한 음성 턴 텔레메트리(서버가 Langfuse 트레이스로 적재). 모든 필드 선택적.
 data class TelemetryReq(

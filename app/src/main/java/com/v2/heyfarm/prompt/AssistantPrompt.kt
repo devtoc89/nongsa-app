@@ -66,9 +66,10 @@ object AssistantPrompt {
 
     @Volatile private var nluTemplate: String = DEFAULT_NLU
     @Volatile private var nlgTemplate: String = DEFAULT_NLG
+    @Volatile private var vocab: String = ""   // KMS 도메인 어휘(STT 교정용) — 서버에서 수신
     @Volatile var version: String = "local-fallback"; private set
 
-    /** 서버에서 최신 프롬프트 수신(실패 시 현재/폴백 유지). */
+    /** 서버에서 최신 프롬프트 + KMS 어휘 수신(실패 시 현재/폴백 유지). */
     suspend fun refresh() = withContext(Dispatchers.IO) {
         try {
             val r = RetrofitClient.api.getPrompts().body() ?: return@withContext
@@ -76,10 +77,15 @@ object AssistantPrompt {
             if (r.nlg.isNotBlank()) nlgTemplate = r.nlg
             if (r.version.isNotBlank()) version = r.version
         } catch (_: Exception) { /* 오프라인 등 — 기존/폴백 유지 */ }
+        try {
+            val v = RetrofitClient.api.getVocab().body()?.terms
+            if (!v.isNullOrEmpty()) vocab = v.joinToString(", ")
+        } catch (_: Exception) {}
     }
 
     fun getCombinedNluPrompt(historyContext: String, userInput: String): String =
-        nluTemplate.replace("{{history}}", historyContext).replace("{{user_input}}", userInput)
+        nluTemplate.replace("{{vocab}}", vocab)
+            .replace("{{history}}", historyContext).replace("{{user_input}}", userInput)
 
     fun getCombinedNlgPrompt(historyContext: String, syncResponseJson: String,
                              resultsJson: String, recognizedText: String): String =
