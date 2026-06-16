@@ -181,9 +181,14 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                         context?.let { ctx ->
                             Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = MaterialTheme.shapes.medium,
                                     modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp)) {
-                                Text(text = "🌱 ${ctx.cycle} · ${ctx.crop} · ${ctx.stage}" +
-                                        (if (ctx.harvest_in > 0) "  ·  수확 D-${ctx.harvest_in}" else ""),
-                                     style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(10.dp))
+                                Column(modifier = Modifier.padding(10.dp)) {
+                                    Text(text = "🌱 ${ctx.cycle} · ${ctx.crop} · ${ctx.stage}" +
+                                            (if (ctx.harvest_in > 0) "  ·  수확 D-${ctx.harvest_in}" else ""),
+                                         style = MaterialTheme.typography.bodyMedium)
+                                    if (ctx.method.isNotBlank())
+                                        Text(text = "🪴 " + ctx.method.substringBefore("(").substringBefore(".").trim(),
+                                             style = MaterialTheme.typography.labelSmall)
+                                }
                             }
                         }
                         // 상태 한 줄(듣는 중 / 분석 중 등) — 작게.

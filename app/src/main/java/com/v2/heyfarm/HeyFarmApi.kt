@@ -73,7 +73,8 @@ data class ContextResp(
     val crop: String = "멜론",
     val stage: String = "-",
     val day: Int = 0,
-    val harvest_in: Int = 0
+    val harvest_in: Int = 0,
+    val method: String = ""   // 재배방식(흙/양액) — 헤더 표시
 )
 
 // 한 음성 턴 텔레메트리(서버가 Langfuse 트레이스로 적재). 모든 필드 선택적.
@@ -133,7 +134,8 @@ data class FarmSyncResponse(
     val knowledge: List<DiagnosisResponse>?,
     val status: FacilityStatus?,
     val inventory: List<InventoryItem>?,
-    val records: List<String> = emptyList()   // 최근 작업·관측 기록(NLG가 근거로 사용)
+    val records: List<String> = emptyList(),  // 최근 작업·관측 기록(NLG가 근거로 사용)
+    val method: String = ""                    // 재배방식(흙/양액) — NLG가 준수
 )
 
 // 서버가 통제하는 온디바이스 Nano 프롬프트(자리표시자 {{...}}는 앱이 채움). intents/params는 추가 필드(무시 가능).
