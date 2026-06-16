@@ -276,6 +276,9 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
             putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, false)   // 온라인 인식 강제(한국어 정확도↑)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)          // N-best → NLU가 농업문맥으로 보정
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 2000L)
+            // 짧은 발화가 너무 빨리 끊겨 NO_MATCH 나는 것 완화 — 최소 인식 길이·관용 침묵 늘림.
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 1200L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1500L)
         }
         lifecycleScope.launch(Dispatchers.Main) {
             try { 
