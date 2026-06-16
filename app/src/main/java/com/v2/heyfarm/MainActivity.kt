@@ -125,8 +125,17 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                     val statusText by viewModel.statusText
                     val isPlanB by viewModel.isModeB
                     val photos by viewModel.photos
+                    val context by viewModel.context
 
                     Column(modifier = Modifier.fillMaxSize().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        context?.let { ctx ->
+                            Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = MaterialTheme.shapes.medium,
+                                    modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp)) {
+                                Text(text = "🌱 ${ctx.cycle} · ${ctx.crop} · ${ctx.stage}" +
+                                        (if (ctx.harvest_in > 0) "  ·  수확 D-${ctx.harvest_in}" else ""),
+                                     style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(10.dp))
+                            }
+                        }
                         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 16.dp)) {
                             Text(text = if (isPlanB) "🤖 Plan B (모델 직접 인식)" else "⚙️ Plan A (시스템 STT)")
                             Spacer(modifier = Modifier.width(16.dp))

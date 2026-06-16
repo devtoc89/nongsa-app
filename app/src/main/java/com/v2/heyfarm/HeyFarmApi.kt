@@ -60,9 +60,21 @@ interface HeyFarmApi {
     /** 12. STT 교정용 KMS 도메인 어휘 — NLU 프롬프트 {{vocab}}에 주입 */
     @GET("/api/v1/vocab")
     suspend fun getVocab(): Response<VocabResp>
+
+    /** 13. active 작기 컨텍스트 — 앱 상단 표시(작기·작물·단계·수확D-day) */
+    @GET("/api/v1/context")
+    suspend fun getContext(): Response<ContextResp>
 }
 
 data class VocabResp(val terms: List<String> = emptyList())
+
+data class ContextResp(
+    val cycle: String = "",
+    val crop: String = "멜론",
+    val stage: String = "-",
+    val day: Int = 0,
+    val harvest_in: Int = 0
+)
 
 // 한 음성 턴 텔레메트리(서버가 Langfuse 트레이스로 적재). 모든 필드 선택적.
 data class TelemetryReq(

@@ -33,10 +33,22 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
     private val _photos = mutableStateOf<List<PhotoItem>>(emptyList())
     val photos: State<List<PhotoItem>> = _photos
 
+    private val _context = mutableStateOf<ContextResp?>(null)
+    val context: State<ContextResp?> = _context
+
     init {
         // 앱 시작 시 서버에서 최신 프롬프트(NLU/NLG) 수신 — 실패 시 폴백 유지.
         viewModelScope.launch { AssistantPrompt.refresh() }
         refreshPhotos()
+        refreshContext()
+    }
+
+    /** active 작기 컨텍스트 갱신(작기·작물·단계·수확D-day). */
+    fun refreshContext() {
+        viewModelScope.launch {
+            try { _context.value = withContext(Dispatchers.IO) { RetrofitClient.api.getContext().body() } }
+            catch (_: Exception) {}
+        }
     }
 
     /** active 작기 사진 갤러리 갱신(업로드 후·시작 시). */
