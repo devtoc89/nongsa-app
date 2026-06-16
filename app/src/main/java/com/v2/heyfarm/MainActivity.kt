@@ -3,6 +3,8 @@ package com.v2.heyfarm
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
@@ -112,6 +114,31 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         listenPaused = true
         recordingJob?.cancel()
         isListening.set(false)
+    }
+
+    /**
+     * 업로드 전 JPEG 다운스케일 — 풀해상도(2~3MB)는 Tailscale 업로드·Gemini 비전을 느리게 함.
+     * 진단엔 1280px면 충분. 실패 시 원본 바이트 폴백.
+     */
+    private fun downscaleJpeg(uri: Uri, maxSide: Int = 1280, quality: Int = 85): ByteArray? {
+        return try {
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+            val w = bounds.outWidth; val h = bounds.outHeight
+            if (w <= 0 || h <= 0) return contentResolver.openInputStream(uri)?.use { it.readBytes() }
+            var sample = 1
+            while (maxOf(w, h) / sample > maxSide * 2) sample *= 2
+            val opts = BitmapFactory.Options().apply { inSampleSize = sample }
+            var bmp = contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, opts) }
+                ?: return contentResolver.openInputStream(uri)?.use { it.readBytes() }
+            val scale = maxSide.toFloat() / maxOf(bmp.width, bmp.height)
+            if (scale < 1f) bmp = Bitmap.createScaledBitmap(bmp, (bmp.width * scale).toInt(), (bmp.height * scale).toInt(), true)
+            val out = ByteArrayOutputStream()
+            bmp.compress(Bitmap.CompressFormat.JPEG, quality, out)
+            out.toByteArray()
+        } catch (e: Exception) {
+            try { contentResolver.openInputStream(uri)?.use { it.readBytes() } } catch (_: Exception) { null }
+        }
     }
 
     private fun launchCameraForDiag() { pendingDiag = true; launchCamera() }
@@ -458,7 +485,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         viewModel.addImageLog("USER", uri, "[사진] 업로드")
         lifecycleScope.launch(Dispatchers.IO) {
             val msg = try {
-                val bytes = contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                val bytes = downscaleJpeg(uri)
                 if (bytes == null) "사진을 읽지 못했습니다." else {
                     val reqBody = bytes.toRequestBody("image/jpeg".toMediaType())
                     val part = MultipartBody.Part.createFormData("image", "photo.jpg", reqBody)
@@ -477,7 +504,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         viewModel.addImageLog("USER", uri, "[사진+음성] $symptom")
         lifecycleScope.launch(Dispatchers.IO) {
             val msg = try {
-                val bytes = contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                val bytes = downscaleJpeg(uri)
                 if (bytes == null) "사진을 읽지 못했습니다." else {
                     val imgPart = MultipartBody.Part.createFormData(
                         "image", "photo.jpg", bytes.toRequestBody("image/jpeg".toMediaType()))
@@ -496,7 +523,19 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
     private fun speak(text: String) {
         val params = Bundle()
         params.putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, "v1")
-        textToSpeech?.speak(text, TextToSpeech.QUEUE_FLUSH, params, "v1")
+        textToSpeech?.speak(stripMarkdown(text), TextToSpeech.QUEUE_FLUSH, params, "v1")
+    }
+
+    /** TTS가 마크다운 기호(###, **, 목록·코드펜스)를 그대로 읽지 않게 평문화. 소스 불문 차단. */
+    private fun stripMarkdown(text: String): String {
+        return text
+            .replace(Regex("```[a-zA-Z]*"), "")          // 코드펜스
+            .replace(Regex("(?m)^\\s{0,3}#{1,6}\\s*"), "") // 헤더 ###
+            .replace(Regex("\\*\\*|__|`"), "")            // 굵게/인라인코드
+            .replace(Regex("(?m)^\\s*[-*+]\\s+"), "")     // 불릿
+            .replace(Regex("(?m)^\\s*>\\s*"), "")         // 인용
+            .replace(Regex("\\s+"), " ")                   // 줄바꿈·중복공백 정리
+            .trim()
     }
 
     override fun onInit(status: Int) {
