@@ -63,6 +63,13 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
         _statusText.value = text
     }
 
+    /** 사진 등 비-음성 턴도 대화 맥락에 기록 — 이후 음성 후속이 맥락을 잇게. */
+    fun recordTurn(user: String, ai: String) {
+        chatHistory.add("User: $user")
+        chatHistory.add("AI: $ai")
+        if (chatHistory.size > 10) repeat(2) { chatHistory.removeAt(0) }
+    }
+
     /** 온디바이스 Nano ASR 가용 여부(프리롤 캡처 경로 선택용). */
     suspend fun isSpeechReady(): Boolean = llmManager.isSpeechReady()
 

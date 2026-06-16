@@ -132,7 +132,8 @@ data class FarmSyncResponse(
     val manual: ManualData?,
     val knowledge: List<DiagnosisResponse>?,
     val status: FacilityStatus?,
-    val inventory: List<InventoryItem>?
+    val inventory: List<InventoryItem>?,
+    val records: List<String> = emptyList()   // 최근 작업·관측 기록(NLG가 근거로 사용)
 )
 
 // 서버가 통제하는 온디바이스 Nano 프롬프트(자리표시자 {{...}}는 앱이 채움). intents/params는 추가 필드(무시 가능).

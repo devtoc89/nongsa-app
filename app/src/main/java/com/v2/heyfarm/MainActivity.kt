@@ -494,7 +494,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                     else (res?.reason ?: "사진을 판독하지 못했습니다.")
                 }
             } catch (e: Exception) { "사진 업로드 실패: ${e.localizedMessage}" }
-            withContext(Dispatchers.Main) { viewModel.addDebugLog("AI", msg); viewModel.refreshPhotos(); speak(msg) }
+            withContext(Dispatchers.Main) { viewModel.addDebugLog("AI", msg); viewModel.recordTurn("모종 사진 업로드", msg); viewModel.refreshPhotos(); speak(msg) }
         }
     }
 
@@ -516,7 +516,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                     } else "진단에 실패했습니다."
                 }
             } catch (e: Exception) { "진단 실패: ${e.localizedMessage}" }
-            withContext(Dispatchers.Main) { viewModel.addDebugLog("AI", msg); viewModel.refreshPhotos(); speak(msg) }
+            withContext(Dispatchers.Main) { viewModel.addDebugLog("AI", msg); viewModel.recordTurn("사진+음성 진단: $symptom", msg); viewModel.refreshPhotos(); speak(msg) }
         }
     }
 
