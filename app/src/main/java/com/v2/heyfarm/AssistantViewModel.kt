@@ -122,9 +122,9 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
         // 2. [핵심 NLU] 의도 추출 및 히스토리 참조
         val historyContext = chatHistory.takeLast(10).joinToString("\n")
         
-        val nluResultRaw = withContext(Dispatchers.IO) { 
+        val nluResultRaw = withContext(Dispatchers.IO) {
             if (isDirect && audioData != null) {
-                // Plan B: 모델 직접 ASR 수행
+                // 온디바이스 Nano ASR(프리롤 캡처 오디오) 전사
                 llmManager.transcribeAudio(audioData)
             } else {
                 // Plan A: 시스템 STT 텍스트 분석
@@ -132,6 +132,16 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
                 addDebugLog("NLU PROMPT", nluPrompt)
                 llmManager.generate(nluPrompt)
             }
+        }
+
+        // 원시 STT(음성 직접 인식 시 Nano 전사 결과) — 텔레메트리 transcript로 기록.
+        val rawStt = if (isDirect) nluResultRaw else userInput
+
+        // 빈 전사/오인식 차단 — 빈 텍스트를 NLU에 넣으면 엉뚱한 답이 나오므로 재청취 유도.
+        if (isDirect && rawStt.isBlank()) {
+            addDebugLog("STT", "전사 실패(빈 결과) — 재청취")
+            onSpeak("죄송해요, 잘 못 알아들었어요. 다시 한번 말씀해 주세요.")
+            return
         }
 
         var finalTranscription = if (isDirect) nluResultRaw else userInput
@@ -217,7 +227,9 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
 
         addDebugLog("AI", finalResponse)
         onSpeak(finalResponse)
-        sendTelemetry(userInput, finalTranscription, loggedIntents, results.keys.toList(), finalResponse)
+        sendTelemetry(rawStt, finalTranscription, loggedIntents, results.keys.toList(), finalResponse)
+        // 작업 보고·날짜 변경으로 단계/수확 D-day가 바뀔 수 있어 매 턴 후 헤더 갱신.
+        refreshContext()
     }
 
     /** 한 음성 턴을 서버(Langfuse)로 전송 — 실패 무시(대화 흐름에 영향 없음). */
