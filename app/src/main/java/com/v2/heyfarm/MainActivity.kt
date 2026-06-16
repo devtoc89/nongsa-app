@@ -59,6 +59,10 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
     private val isProcessing = AtomicBoolean(false)
     private var lastPartialText = ""
 
+    // 온디바이스 Nano ASR + AudioRecord 프리롤 캡처(앞 음절 보존). 미가용 시 시스템 STT로 폴백.
+    private val useNanoAsr = AtomicBoolean(false)
+    private val asrDecided = AtomicBoolean(false)
+
     // Plan B: Raw Audio Capture
     private var audioRecord: AudioRecord? = null
     private var recordingJob: Job? = null
@@ -277,7 +281,118 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         }
     }
 
+    /** 듣기 시작 — 첫 호출 때 Nano ASR 가용성을 판별해 프리롤 캡처 또는 시스템 STT로 분기. */
     private fun startListening() {
+        if (isFinishing || isDestroyed || isProcessing.get() || isListening.get()) return
+        if (!asrDecided.get()) {
+            lifecycleScope.launch {
+                val ready = try { viewModel.isSpeechReady() } catch (e: Exception) { false }
+                useNanoAsr.set(ready)
+                asrDecided.set(true)
+                viewModel.addDebugLog("STT", if (ready) "온디바이스 Nano ASR + 프리롤 캡처" else "시스템 STT 폴백(Nano ASR 미가용)")
+                routeListen()
+            }
+            return
+        }
+        routeListen()
+    }
+
+    private fun routeListen() {
+        if (useNanoAsr.get()) startNanoCapture() else startSystemStt()
+    }
+
+    /**
+     * 프리롤 캡처: 비프(발화 신호) **전에** AudioRecord를 먼저 돌려 앞 ~300ms를 버퍼에 담아
+     * 첫 음절 짤림을 없앤다. RMS 기반 VAD로 발화 끝(침묵 1초)을 감지해 종료 → Nano 전사.
+     */
+    private fun startNanoCapture() {
+        if (isListening.getAndSet(true)) return
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            isListening.set(false); return
+        }
+        recordingJob = lifecycleScope.launch(Dispatchers.IO) {
+            val bytesPerSec = sampleRate * 2
+            val frame = 1280                                   // 40ms @16kHz·16bit·mono
+            val minBuf = AudioRecord.getMinBufferSize(sampleRate, channelConfig, audioFormat)
+            val rec = try {
+                AudioRecord(MediaRecorder.AudioSource.VOICE_RECOGNITION, sampleRate, channelConfig, audioFormat,
+                    maxOf(minBuf, frame * 8))
+            } catch (e: Exception) { isListening.set(false); withMain { restartAfter(800) }; return@launch }
+            if (rec.state != AudioRecord.STATE_INITIALIZED) {
+                rec.release(); isListening.set(false); withMain { restartAfter(800) }; return@launch
+            }
+            audioRecord = rec
+            val out = ByteArrayOutputStream()
+            val buf = ByteArray(frame)
+            rec.startRecording()
+
+            // 1) 프리롤/워밍업: 비프 전에 ~300ms 미리 캡처(노이즈 플로어도 여기서 측정).
+            var warm = 0; var floorSum = 0.0; var floorN = 0
+            while (isActive && isListening.get() && warm < bytesPerSec * 300 / 1000) {
+                val n = rec.read(buf, 0, buf.size); if (n <= 0) continue
+                out.write(buf, 0, n); warm += n
+                floorSum += rms(buf, n); floorN++
+            }
+            val noiseFloor = if (floorN > 0) floorSum / floorN else 300.0
+            val threshold = maxOf(noiseFloor * 3.0, 550.0)     // 적응형 발화 임계
+            withMain { toneGenerator?.startTone(ToneGenerator.TONE_PROP_BEEP, 100); viewModel.setStatus("말씀하세요...") }
+
+            // 2) VAD 루프: 발화 시작 후 침묵 1s면 종료. 무발화 6s·최대 12s 컷.
+            var speechStarted = false; var elapsedMs = 0L; var lastVoiceMs = 0L
+            while (isActive && isListening.get()) {
+                val n = rec.read(buf, 0, buf.size); if (n <= 0) continue
+                out.write(buf, 0, n)
+                elapsedMs += (n / 2) * 1000L / sampleRate
+                if (rms(buf, n) > threshold) {
+                    if (!speechStarted) { speechStarted = true; withMain { viewModel.setStatus("듣는 중...") } }
+                    lastVoiceMs = elapsedMs
+                }
+                if (!speechStarted && elapsedMs > 6000L) break
+                if (speechStarted && elapsedMs - lastVoiceMs > 1000L) break
+                if (elapsedMs > 12000L) break
+            }
+            try { rec.stop() } catch (e: Exception) {}
+            rec.release(); audioRecord = null; isListening.set(false)
+
+            val pcm = out.toByteArray()
+            withMain {
+                if (!speechStarted || pcm.size < bytesPerSec / 2) {   // 발화 없음(<0.5s) → 재청취
+                    viewModel.setStatus("음성 대기 중..."); restartAfter(300); return@withMain
+                }
+                val diagUri = pendingDiagPhotoUri
+                if (diagUri != null) {
+                    pendingDiagPhotoUri = null
+                    viewModel.setStatus("증상 인식 중...")
+                    lifecycleScope.launch {
+                        val sym = try { viewModel.transcribe(pcm) } catch (e: Exception) { "" }
+                        if (sym.isNotBlank()) uploadDiagPhoto(diagUri, sym) else startListening()
+                    }
+                } else {
+                    // 기존 Plan B 경로 재사용 — ViewModel이 Nano 전사 후 NLU/NLG 수행.
+                    onUserSpeechRecognized("", audioData = pcm)
+                }
+            }
+        }
+    }
+
+    /** PCM16(LE) 프레임의 RMS 진폭. */
+    private fun rms(buf: ByteArray, len: Int): Double {
+        var sum = 0.0; var c = 0; var i = 0
+        while (i + 1 < len) {
+            val s = (buf[i].toInt() and 0xff) or (buf[i + 1].toInt() shl 8)
+            sum += s.toDouble() * s; c++; i += 2
+        }
+        return if (c > 0) kotlin.math.sqrt(sum / c) else 0.0
+    }
+
+    private fun restartAfter(ms: Long) {
+        if (!isProcessing.get()) lifecycleScope.launch(Dispatchers.Main) { delay(ms); startListening() }
+    }
+
+    private suspend fun withMain(block: () -> Unit) = withContext(Dispatchers.Main) { block() }
+
+    /** 폴백: 시스템 SpeechRecognizer 기반 듣기(Nano ASR 미가용 기기). */
+    private fun startSystemStt() {
         if (isFinishing || isDestroyed || isProcessing.get()) return
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
@@ -290,10 +405,10 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1500L)
         }
         lifecycleScope.launch(Dispatchers.Main) {
-            try { 
+            try {
                 if (!isListening.get()) {
                     delay(100) // 마이크 초기화 대기
-                    speechRecognizer?.startListening(intent) 
+                    speechRecognizer?.startListening(intent)
                 }
             } catch (ignored: Exception) { delay(1000); startListening() }
         }

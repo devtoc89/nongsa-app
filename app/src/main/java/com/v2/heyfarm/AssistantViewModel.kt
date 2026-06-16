@@ -63,6 +63,13 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
         _statusText.value = text
     }
 
+    /** 온디바이스 Nano ASR 가용 여부(프리롤 캡처 경로 선택용). */
+    suspend fun isSpeechReady(): Boolean = llmManager.isSpeechReady()
+
+    /** 캡처 PCM을 온디바이스 Nano로 전사(사진+음성 진단 등 텍스트가 즉시 필요한 경우). */
+    suspend fun transcribe(audio: ByteArray): String =
+        withContext(Dispatchers.IO) { llmManager.transcribeAudio(audio) }
+
     private fun header(tag: String): String {
         val ts = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
         val prefix = when (tag) {
